@@ -19,15 +19,18 @@
 
 // Handle 
 ConVar  gc_sPrefix[64],
-        gc_bMessages;
+        gc_bMessages,
+        gc_bOwnTime,
+        gc_sOwnTime[8];
 
 // String
 char    g_sServerTime[16],
-        g_sPrefix[64];
+        g_sPrefix[64],
+        g_sPathPreferencesKeyValues[PLATFORM_MAX_PATH];
+        g_sPreferenceTime[8],
+        g_sPreferenceServerTime[8];
 
 // Float
-float   g_fl21June[12],
-        g_fl21December[12];
 
 // Int
 int     g_iFogIndex,
@@ -61,8 +64,10 @@ public void OnPluginStart()
     AutoExecConfig_SetFile("TimesOfDay", PLUGIN_AUTHOR);
 
     // ConVars 
-    gc_bMessages    = AutoExecConfig_CreateConVar("sm_tod_messages",    "1",                    "Включить сообщения плагина? (1 - вкл., 0 - выкл.)", 0, true, 0.0, true, 1.0);
-    gc_sPrefix      = AutoExecConfig_CreateConVar("sm_tod_prefix",      "[{green}SM{default}]", "Префикс перед сообщениями плагина?");
+    gc_bMessages    = AutoExecConfig_CreateConVar("sm_tod_messages",         "1",                    "Включить сообщения плагина? (1 - вкл., 0 - выкл.)", 0, true, 0.0, true, 1.0);
+    gc_sPrefix      = AutoExecConfig_CreateConVar("sm_tod_prefix",           "[{green}SM{default}]", "Префикс перед сообщениями плагина?");
+    gc_bOwnTime     = AutoExecConfig_CreateConVar("sm_tod_own_time_mode",    "0",                    "Использовать собственное время? Иначе будет использоваться серверное время. (1 - исп, 0 - не исп.)", 0, true, 0.0, true, 1.0);
+    gc_sOwnTime     = AutoExecConfig_CreateConVar("sm_tod_own_time",         "12:00",                "Укажите время, с которого начнется отсчет после первого запуска сервера. Указывать в формате hh:mm. (час:минуты)");
 
     // Hooks 
     HookEvent("round_start", Event_OnRoundStart);
@@ -81,7 +86,7 @@ public void OnPluginStart()
 public void OnMapStart() 
 {
     // Создаем сущность - туман, она идеально подходит для имитации времени суток 
-    if(CreateEntity(g_iFogIndex, "env_fog_controller")) 
+    if (CreateEntity(g_iFogIndex, "env_fog_controller")) 
 	{
 		SettingsFog(); // устанавливаем соотвутствующие настройки тумана
 		DispatchSpawn(g_iFogIndex); // спавним на карте сущность
@@ -96,6 +101,37 @@ public void OnConfigsExecuted()
 {
     // Инициализация префикса плагина
     gc_sPrefix.GetString(g_sPrefix, sizeof(g_sPrefix));
+
+    // Проверка преференса плагина 
+    if (gc_bOwnTime.BoolValue)
+    {
+        KeyValues hPreferences = new KeyValues("Preferences");
+		hPreferences.Rewind(); // Preferences
+	
+        // Создаем путь к файлу, т.к. в дальнейшем еще будем им пользоваться
+        BuildPath(Path_SM, g_sPathPreferencesKeyValues, sizeof(g_sPathPreferencesKeyValues), "configs/DENFER/TimesOfDay/preferences.cfg");
+        
+        if (hPreferences.ImportFromFile(g_sPathPreferencesKeyValues))
+        {
+            char buffer[4];
+            hPreferences.GetString("first_init", buffer, sizeof(buffer));
+
+            // Если плагин впервые запускается с собственным временнем, которое было выставлено владельцем плагина, 
+            // то стоит сообщить о том, что плагин будет 'существовать' и работать по-своему времени, отличающемуся от серверного.
+            if (!strcmp(buffer, "yes"))
+            {
+                hPreferences.SetString("first_init", "no");
+            }
+            else
+            {
+                // Вынимаем строку с сохраненным временем на момент выключения сервера и строку с серверным временем
+                hPreferences.GetString("current_time", g_sPreferenceTime, sizeof(g_sPreferenceTime));
+                hPreferences.GetString("server_time", g_sPreferenceServerTime, sizeof(g_sPreferenceServerTime));
+            }
+        }
+        
+		delete hPreferences;
+    }
 }
 
 public void OnMapEnd() 
@@ -105,7 +141,21 @@ public void OnMapEnd()
 
 public void OnPluginEnd() 
 {
+    // Сохранение в преференс
+    if (gc_bOwnTime.BoolValue)
+    {
+        KeyValues hPreferences = new KeyValues("Preferences");
+		hPreferences.Rewind(); // Preferences
 
+        if(hPreferences.ImportFromFile(g_sPathPreferencesKeyValues))
+        {
+            char buffer[8];
+            GetServerTimeString(buffer, sizeof(buffer));
+
+            hPreferences.SetString("current_time", buffer);
+            hPreferences.SetString("server_time", buffer);
+        }
+    }
 }
 
 public void OnGameFrame() 
@@ -245,7 +295,7 @@ void IntToTime(int number, char[] buffer, const int size)
 }
 
 /**
-*   Получает серверное время формата HH:MM:SS и сохраняет в буффере.
+*   Получает серверное время формата HH:MM и сохраняет в буффере.
 *   
 *   @param buffer   - буффер для хранения времени.
 *   @param size     - размер буффера.
@@ -292,4 +342,33 @@ float GetFogMaxDestiny()
     {
 
     }
+}
+
+/**
+*   //TODO: Дописать функцию и придумать методы вычитания и сложения времени.
+*   Получает собственное серверное время формата HH:MM и сохраняет в буффере.
+*   
+*   @param buffer   - буффер для хранения времени.
+*   @param size     - размер буффера.
+*
+*   @return         - ничего не возвращает.
+*/
+void GetOwnServerTimeString(char[] buffer, const int size) 
+{
+    // Конвертируем наше время в Int
+    int ownTime = TimeToInt(g_sPreferenceTime, sizeof(g_sPreferenceTime));
+    int serverTime = GetServerTimeInt();
+
+}
+
+//TODO: Написать метод вычитания двух временных точек.
+void TimeSub()
+{
+
+}
+
+//TODO: Написать метод сложения двух временных точек.
+void TimeAdd()
+{
+
 }
