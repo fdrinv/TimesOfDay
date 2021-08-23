@@ -18,18 +18,23 @@
 #pragma semicolon 1
 
 // Handle 
+ConVar  gc_sPrefix[64],
+        gc_bMessages;
 
 // String
-char g_sServerTime[16];
+char    g_sServerTime[16],
+        g_sPrefix[64];
 
 // Float
+float   g_fl21June[12],
+        g_fl21December[12];
 
 // Int
-int g_iFogIndex,
-    g_iServerTime;
+int     g_iFogIndex,
+        g_iServerTime;
 
 // Bool
-bool g_bCreatedFog;
+bool    g_bCreatedFog;
 
 // Information
 public Plugin myinfo = {
@@ -56,6 +61,8 @@ public void OnPluginStart()
     AutoExecConfig_SetFile("TimesOfDay", PLUGIN_AUTHOR);
 
     // ConVars 
+    gc_bMessages    = AutoExecConfig_CreateConVar("sm_tod_messages",    "1",                    "Включить сообщения плагина? (1 - вкл., 0 - выкл.)", 0, true, 0.0, true, 1.0);
+    gc_sPrefix      = AutoExecConfig_CreateConVar("sm_tod_prefix",      "[{green}SM{default}]", "Префикс перед сообщениями плагина?");
 
     // Hooks 
     HookEvent("round_start", Event_OnRoundStart);
@@ -70,7 +77,6 @@ public void OnPluginStart()
 //                  SOURCEMOD CALLBACKS                 //
 //                                                      //
 //******************************************************//
-
 
 public void OnMapStart() 
 {
@@ -88,7 +94,8 @@ public void OnMapStart()
 
 public void OnConfigsExecuted() 
 {
-
+    // Инициализация префикса плагина
+    gc_sPrefix.GetString(g_sPrefix, sizeof(g_sPrefix));
 }
 
 public void OnMapEnd() 
@@ -167,7 +174,6 @@ void SettingsFog()
     // пришлость взять строгие границы, а именно 12:00 - полдень (солнце находится в зените)
     // и это самая яркая точка. 
     // 00:00  - солнце полностью зашло, максимальная плотность. 
-    // TODO: Сделать поддержку по месяцам и дням, и максимально приблизить к естественным явлениям заката и восхода. 
 
     fogmaxdensity = GetFogMaxDestiny()
 	DispatchKeyValueFloat(g_iFogIndex, "fogmaxdensity", fogmaxdensity);
@@ -201,7 +207,7 @@ int TimeToInt(char[] time, const char size)
 void IntToTime(int number, char[] buffer, const int size)
 {
     // На данный момент плагин поддерживает только 24 часовой формат, поэтому были заведены строгие границы области значения number.
-    if (number < 0 || number > 235959) 
+    if (number < 0 || number > 2359) 
     {
         return;
     }
@@ -216,12 +222,12 @@ void IntToTime(int number, char[] buffer, const int size)
     }
 
     // Создаем еще один копирующий буффер
-    char copyBuffer[16];
+    char copyBuffer[8];
     int counter = 0, counter_buffer = 0;
 
     while (counter != 8)
     {
-        if (counter == 2 || counter == 5)
+        if (counter == 2)
         {
             copyBuffer[counter] = ':';
         }
@@ -249,7 +255,7 @@ void IntToTime(int number, char[] buffer, const int size)
 void GetServerTimeString(char[] buffer, const int size)
 {
     // Получаем время в формате hh:mm:ss 
-    FormatTime(buffer, size, "%H:%M:%S");
+    FormatTime(buffer, size, "%H:%M");
 }
 
 /**
@@ -260,7 +266,7 @@ void GetServerTimeString(char[] buffer, const int size)
 int GetServerTimeInt()
 {
     char time[16];
-    FormatTime(time, sizeof(time), "%H:%M:%S");
+    FormatTime(time, sizeof(time), "%H:%M");
 
     return TimeToInt(time);
 }
@@ -276,13 +282,13 @@ float GetFogMaxDestiny()
     float fogmaxdensity = 0.0;
 
     // Процесс заката, от самого ярко к темному, то бишь с 12:00 до 00:00
-    if (time >= 120000 && time < 235959)
+    if (time >= 1200 && time < 2359)
     {
         
     }
 
     // Процесс рассвета, от самого темного к яркому, то бишь с 00:00 до 12:00 
-    if(time < 120000)
+    if(time < 1200)
     {
 
     }
