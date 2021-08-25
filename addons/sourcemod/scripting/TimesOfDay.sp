@@ -20,17 +20,18 @@
 // Compile options  
 #pragma newdecls required
 #pragma semicolon 1
+#pragma tabsize 0 
 
 // Handle 
-ConVar  gc_sPrefix[64],
+ConVar  gc_sPrefix,
         gc_bMessages,
         gc_bOwnTime,
-        gc_sOwnTime[8];
+        gc_sOwnTime;
 
 // String
 char    g_sServerTime[16],
         g_sPrefix[64],
-        g_sPathPreferencesKeyValues[PLATFORM_MAX_PATH];
+        g_sPathPreferencesKeyValues[PLATFORM_MAX_PATH],
         g_sPreferenceTime[8],
         g_sPreferenceServerTime[8];
 
@@ -76,6 +77,23 @@ public void OnPluginStart()
 
     // Hooks 
     HookEvent("round_start", Event_OnRoundStart);
+
+    char time[8];
+    IntToTime(TimeSub("0000", "0021"), time, 8);
+    LogError("00:00 and 00:21 = %s", time); 
+    IntToTime(TimeSub("0000", "0059"), time, 8);
+    LogError("00:00 and 00:59 = %s", time); 
+    IntToTime(TimeSub("2359", "2359"), time, 8);
+    LogError("23:59 and 23:59 = %s", time); 
+    IntToTime(TimeSub("2359", "0010"), time, 8);
+    LogError("23:59 and 00:10 = %s", time); 
+    IntToTime(TimeSub("0000", "14:01"), time, 8);
+    LogError("00:00 and 14:01 = %s", time); 
+    IntToTime(TimeSub("0659", "0059"), time, 8);
+    LogError("06:59 and 00:59 = %s", time); 
+    IntToTime(TimeSub("1100", "1100"), time, 8);
+    LogError("11:00 and 11:00 = %s", time); 
+
 
     // AutoExecConfig
     AutoExecConfig_ExecuteFile();
@@ -223,28 +241,28 @@ public void SettingsFog()
 	DispatchKeyValueFloat(g_iFogIndex, "fogend", 50.0);
 
     // flMaxDensity - плотность тумана, создает иллюзию ночи
-public float fogmaxdensity = 0.0
+    float fogmaxdensity = 0.0;
 
     // Так как плагин не пользуется точными научными данными в зависимости от дня и месяца
     // пришлость взять строгие границы, а именно 12:00 - полдень (солнце находится в зените)
     // и это самая яркая точка. 
     // 00:00  - солнце полностью зашло, максимальная плотность. 
 
-    fogmaxdensity = GetFogMaxDestiny()
+    fogmaxdensity = GetFogMaxDestiny();
 	DispatchKeyValueFloat(g_iFogIndex, "fogmaxdensity", fogmaxdensity);
 }
 
 /**
 *   Переводит из формата даты в целочисленное значение.
 *
-*   @param time - строка в формате времени %H:%M:%S.
+*   @param time - строка в формате времени %H:%M.
 *   @param size - размер строки со временем.
 *
 *   @return     - целочисленное значение типа Int (интовое представление времени).
 */
 public int TimeToInt(char[] time, const char size) 
 {
-    // Удаляем не нужные символы ':', превращая строку в формат hh:mm:ss
+    // Удаляем не нужные символы ':', превращая строку в формат hh:mm
     ReplaceString(time, size, ":", "");
     // Конвертирую в тип Int, стоит подметить, что крайний левый ноль пропадет. 
     return StringToInt(time);
@@ -270,14 +288,57 @@ public void IntToTime(int number, char[] buffer, const int size)
     // Дальше интовое значение числа нам не пригодится
     IntToString(number, buffer, size);
 
-    // Если число было передано без 0 - добавим его для стандартного представления времени - 0h:mm:ss
-    if (strlen(buffer) == 5)
-    {
-        FormatEx(buffer, size, "0%s");
-    }
-
+    // Если число было передано без 0 - добавим его для стандартного представления времени - 0h:mm
     // Создаем еще один копирующий буффер
     char copyBuffer[8];
+
+    // 0h:mm
+    if (strlen(buffer) == 3)
+    {
+        copyBuffer[0] = '0';
+
+        for (int i = 0; i < sizeof(copyBuffer) - 1; ++i)
+        {
+            copyBuffer[i + 1] = buffer[i];
+        }
+
+        for (int i = 0; i < size; ++i)
+        {
+            buffer[i] = copyBuffer[i];
+        }
+    }
+
+    // 00:mm
+    if (strlen(buffer) == 2)
+    {
+        copyBuffer[0] = '0';
+        copyBuffer[1] = '0';
+
+        for (int i = 0; i < sizeof(copyBuffer) - 2; ++i)
+        {
+            copyBuffer[i + 2] = buffer[i];
+        }
+
+        for (int i = 0; i < size; ++i)
+        {
+            buffer[i] = copyBuffer[i];
+        }
+    }
+
+    // 00:0m
+    if (strlen(buffer) == 1)
+    {
+        copyBuffer[0] = '0';
+        copyBuffer[1] = '0';
+        copyBuffer[2] = '0';
+        copyBuffer[3] = buffer[0];
+
+        for (int i = 0; i < size; ++i)
+        {
+            buffer[i] = copyBuffer[i];
+        }
+    }
+
     int counter = 0, counter_buffer = 0;
 
     while (counter != 8)
@@ -292,7 +353,6 @@ public void IntToTime(int number, char[] buffer, const int size)
             ++counter_buffer;
         }
 
-        LogError("%s", copyBuffer[counter]);
         ++counter;
     }
 
@@ -309,7 +369,7 @@ public void IntToTime(int number, char[] buffer, const int size)
 */
 public void GetServerTimeString(char[] buffer, const int size)
 {
-    // Получаем время в формате hh:mm:ss 
+    // Получаем время в формате hh:mm 
     FormatTime(buffer, size, "%H:%M");
 }
 
@@ -323,7 +383,7 @@ public int GetServerTimeInt()
     char time[16];
     FormatTime(time, sizeof(time), "%H:%M");
 
-    return TimeToInt(time);
+    return TimeToInt(time, sizeof(time));
 }
 
 /**
@@ -365,13 +425,53 @@ void GetOwnServerTimeString(char[] buffer, const int size)
     // Конвертируем наше время в Int
     int ownTime = TimeToInt(g_sPreferenceTime, sizeof(g_sPreferenceTime));
     int serverTime = GetServerTimeInt();
-
 }
 
-//TODO: Написать метод вычитания двух временных точек.
-void TimeSub()
+/**
+*   Вычисляет промежуток времени между двумя временными точками.
+*
+*   @param time_1   - первая временная точка.
+*   @param time_2   - вторая временная точка.
+*
+*   @return         - разница во времени (расстояние между двумя временными точками в фомрате времени) представленное в формате Int.
+*/
+int TimeSub(char[] time_1, char[] time_2)
 {
+    // Нужно будет хранить результат вычислений, чтобы 
+    int result;
 
+    ReplaceString(time_1, 8, ":", "");
+    ReplaceString(time_1, 8, ":", "");
+
+    // Если формат времени был предоставлен для 00:00, то лучше преобразовать в формат 24:00
+    if (time_1[0] == '0' && time_1[1] == '0')
+    {
+        if (StringToInt(time_2) > 1200)
+        {
+            time_1[0] = '2'; time_1[1] = '4';
+        }
+    }
+
+    // Аналогично для второй временной точки
+    if (time_2[0] == '0' && time_2[1] == '0')
+    {
+        if (StringToInt(time_1) > 1200)
+        {
+            time_2[0] = '2'; time_2[1] = '4';
+        }
+    }
+
+    // Непосредственно вычитаем из большей меньшую 
+    if (StringToInt(time_1) > StringToInt(time_2))
+    {
+        Subtraction(time_1, time_2, result);
+    }
+    else 
+    {
+        Subtraction(time_2, time_1, result);
+    }
+
+    return result;
 }
 
 //TODO: Написать метод сложения двух временных точек.
@@ -380,6 +480,60 @@ void TimeAdd()
 
 }
 
+/**
+*   Вычитает из одного временного промежутка - другой.
+*
+*   @param time_1   - первая временная точка.
+*   @param time_2   - вторая временная точка.
+*   @param result   - переменная, которая хранит результат.
+*
+*   @return         - ничего не возвращает.
+*/
+void Subtraction(char[] time_1, char[] time_2, int &result)
+{
+    result = StringToInt(time_1) - StringToInt(time_2);
+    LogError("%i - time_1, time_2 = %i", StringToInt(time_1), StringToInt(time_2));
+
+
+    // Нужно учесть частный случай, расстояние между двумя временными точками находится в диапазоне 1 часа
+    if (StringToInt(time_2) >= 2300 && StringToInt(time_2) < 2400)
+    {
+        if (result > 40 && result < 100)
+        {
+            result -= 40;
+        } 
+    }
+
+    char buffer[8];
+
+    // Следует использовать этот метод для добавления 0 в первый байт строчки
+    IntToTime(result, buffer, sizeof(buffer));
+    ReplaceString(buffer, sizeof(buffer), ":", "");
+
+    LogError("%s - test 1, int value = %i", buffer, CharToInt(buffer[2]));
+    // Нет смысла рассматривать другие байты
+    if (CharToInt(buffer[2]) > 5)
+    {
+        buffer[1] = IntToChar(CharToInt(buffer[1]) + (CharToInt(buffer[2]) - 5));
+        LogError("%s - test 2, int value = %i", buffer, CharToInt(buffer[2]));
+        if (CharToInt(buffer[1]) > 9)
+        {
+            buffer[1] = IntToChar(CharToInt(buffer[1]) - 10);
+            buffer[0] = IntToChar(CharToInt(buffer[0]) + 1);
+        }
+        LogError("%s - test 3, int value = %i", buffer, CharToInt(buffer[2]));
+        buffer[2] = '5';
+        LogError("%s - test 4, int value = %i", buffer, CharToInt(buffer[2]));
+    }
+
+    result = StringToInt(buffer);
+}
+
+/**
+*   Генерирует плотность тумана, тем самым создает эффект заката и рассвета.
+*
+*   @return         - ничего не возвращает.
+*/
 public void GeneratorDailyDensityFog()
 {
     // Инициализируем минимум и максимум плотности тумана
@@ -414,6 +568,73 @@ public int GetIndexDailyDensityFog(int time)
         {
             return i;
         }
+    }
+
+    return -1;
+}
+
+/**
+*   Конвертируем число типа Int в Char.
+*
+*   @param time     - число типа Int.
+*
+*   @return         - символ типа Char или пустой символ, если не смог конвертировать. 
+*/
+char IntToChar(int number)
+{
+    // Исправляем ошибку, когда за элемент массива берется несколько чисел типа Int
+    int counter = 0, temp = number; 
+
+    while (temp > 0)
+    {
+        temp /= 10;
+        ++counter;
+    }
+
+    if (counter > 1)
+    {
+        number = number / RoundFloat(Pow(float(10), float(counter - 1)));
+    }
+
+    // Банальная конвертация из Int в Char
+    switch(number)
+    {
+        case 0: return '0';
+        case 1: return '1';
+        case 2: return '2';
+        case 3: return '3';
+        case 4: return '4';
+        case 5: return '5';
+        case 6: return '6';
+        case 7: return '7';
+        case 8: return '8';
+        case 9: return '9';
+    }
+
+    return ' ';
+}
+
+/**
+*   Конвертируем символ типа Char в Int.
+*
+*   @param time     - символ типа Char.
+*
+*   @return         - число типа Int или -1, если не удалось конвертировать.
+*/
+int CharToInt(char symble)
+{
+    switch(symble)
+    {
+        case '0': return 0;
+        case '1': return 1;
+        case '2': return 2;
+        case '3': return 3;
+        case '4': return 4;
+        case '5': return 5;
+        case '6': return 6;
+        case '7': return 7;
+        case '8': return 8;
+        case '9': return 9;
     }
 
     return -1;
