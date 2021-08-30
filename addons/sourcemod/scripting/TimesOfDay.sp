@@ -78,25 +78,6 @@ public void OnPluginStart()
     // Hooks 
     HookEvent("round_start", Event_OnRoundStart);
 
-    char time[8];
-    IntToTime(TimeSub("0000", "0021"), time, 8);
-    LogError("00:00 and 00:21 = %s", time); 
-    IntToTime(TimeSub("0000", "0059"), time, 8);
-    LogError("00:00 and 00:59 = %s", time); 
-    IntToTime(TimeSub("2359", "2359"), time, 8);
-    LogError("23:59 and 23:59 = %s", time); 
-    IntToTime(TimeSub("2359", "0010"), time, 8);
-    LogError("23:59 and 00:10 = %s", time); 
-    IntToTime(TimeSub("0000", "1401"), time, 8);
-    LogError("00:00 and 14:01 = %s", time); 
-    IntToTime(TimeSub("1401", "1400"), time, 8);
-    LogError("14:01 and 14:00 = %s", time); 
-    IntToTime(TimeSub("1100", "1401"), time, 8);
-    LogError("11:00 and 14:01 = %s", time); 
-    IntToTime(TimeSub("0200", "1400"), time, 8);
-    LogError("02:00 and 14:00 = %s", time);
-
-
     // AutoExecConfig
     AutoExecConfig_ExecuteFile();
     AutoExecConfig_CleanFile(); 
@@ -430,7 +411,7 @@ void GetOwnServerTimeString(char[] buffer, const int size)
 }
 
 /**
-*   Вычисляет промежуток времени между двумя временными точками.
+*   Вычитает промежуток времени одной временой точки из другой.
 *
 *   @param time_1   - первая временная точка.
 *   @param time_2   - вторая временная точка.
@@ -443,14 +424,14 @@ int TimeSub(char[] time_1, char[] time_2)
     ReplaceString(time_1, 8, ":", "");
     ReplaceString(time_1, 8, ":", "");
 
-    // Если формат времени был предоставлен для 00:00, то лучше преобразовать в формат 24:00
-    if (time_1[0] == '0' && time_1[1] == '0')
+    // Если формат времени был предоставлен для 00:00, то лучше преобразовать в формат 24:00 
+    if (StringToInt(time_2) >= NOON && time_1[0] == '0' && time_1[1] == '0')
     {
         time_1[0] = '2'; time_1[1] = '4';
     }
 
     // Аналогично для второй временной точки
-    if (time_2[0] == '0' && time_2[1] == '0')
+    if (StringToInt(time_1) >= NOON && time_2[0] == '0' && time_2[1] == '0')
     {
         time_2[0] = '2'; time_2[1] = '4';
     }
@@ -466,24 +447,33 @@ int TimeSub(char[] time_1, char[] time_2)
     }
 }
 
-//TODO: Написать метод сложения двух временных точек.
-void TimeAdd()
+/**
+*   Складывает промежуток времени одной временой точки из другой.
+*
+*   @param time_1   - первая временная точка.
+*   @param time_2   - вторая временная точка.
+*
+*   @return         - сумма (расстояние между двумя временными точками в фомрате времени) представленное в формате Int.
+*/
+int TimeAdd(char[] time_1, char[] time_2)
 {
+    // Отчищаем две верменные точки от лишних символов 
+    ReplaceString(time_1, 8, ":", "");
+    ReplaceString(time_1, 8, ":", "");
 
+    return Addition(time_1, time_2);
 }
 
 /**
-*   Вычитает из одного временного промежутка - другой.
+*   Вычитает из одной временной точки - другую
 *
-*   @param time_1   - первая временная точка.
+*   @param time_1   - первая временная точка (она обязательно должна быть больше второй).
 *   @param time_2   - вторая временная точка.
 *
 *   @return         - разница во времени представленное в формате Int.
 */
 int Subtraction(char[] time_1, char[] time_2)
 {
-    // time_1 всегда будет >= time_2
-
     char buffer[8];
     int array[4] = {0, 10, 6, 10};
 
@@ -507,11 +497,46 @@ int Subtraction(char[] time_1, char[] time_2)
         {
             buffer[i] = IntToChar(CharToInt(time_1[i]) - CharToInt(time_2[i]));
         }
-
-        LogError("time_1[%i] = %s, time_2[%i] = %s, buffer[%i] = %s", i, IntToChar(CharToInt(time_1[i])), i, IntToChar(CharToInt(time_2[i])), i, IntToChar(CharToInt(buffer[i])));
     }
 
     buffer[0] = IntToChar(CharToInt(time_1[0]) - CharToInt(time_2[0]));
+
+    return StringToInt(buffer);
+}
+
+/**
+*   Складывает из одной временной точки - другую.
+*
+*   @param time_1   - первая временная точка.
+*   @param time_2   - вторая временная точка.
+*
+*   @return         - сумму двух временных точек представленную в формате Int.
+*/
+int Addition(char[] time_1, char[] time_2)
+{
+    char buffer[8];
+    int array[4] = {0, 10, 6, 10};
+
+    for (int i = 3; i > 0; --i)
+    {
+        if (CharToInt(time_1[i]) + CharToInt(time_2[i]) >= array[i])
+        {
+            buffer[i] = IntToChar(CharToInt(time_1[i]) + CharToInt(time_2[i]) - array[i]);
+            time_1[i - 1] = IntToChar(CharToInt(time_1[i - 1]) + 1);
+        }
+        else 
+        {
+            buffer[i] = IntToChar(CharToInt(time_1[i]) + CharToInt(time_2[i]));
+        }
+    }
+
+    buffer[0] = IntToChar(CharToInt(time_1[0]) + CharToInt(time_2[0]));
+
+    if (StringToInt(buffer) >= 2400)
+    {
+        IntToTime(Subtraction(buffer, "2400"), buffer, sizeof(buffer));
+        ReplaceString(buffer, 8, ":", "");
+    }
 
     return StringToInt(buffer);
 }
