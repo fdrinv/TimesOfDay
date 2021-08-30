@@ -32,7 +32,7 @@ ConVar  gc_sPrefix,
 char    g_sServerTime[16],
         g_sPrefix[64],
         g_sPathPreferencesKeyValues[PLATFORM_MAX_PATH],
-        g_sPreferenceTime[8],
+        g_sPreferenceOwnTime[8],
         g_sPreferenceServerTime[8];
 
 // Float
@@ -124,14 +124,14 @@ public void OnConfigsExecuted()
 
             // Если плагин впервые запускается с собственным временнем, которое было выставлено владельцем плагина, 
             // то стоит сообщить о том, что плагин будет 'существовать' и работать по-своему времени, отличающемуся от серверного.
-            if (!strcmp(buffer, "yes"))
+            if (!strcmp(buffer, "no"))
             {
-                hPreferences.SetString("first_init", "no");
+                hPreferences.SetString("first_init", "yes");
             }
             else
             {
                 // Вынимаем строку с сохраненным временем на момент выключения сервера и строку с серверным временем
-                hPreferences.GetString("current_time", g_sPreferenceTime, sizeof(g_sPreferenceTime));
+                hPreferences.GetString("own_time", g_sPreferenceOwnTime, sizeof(g_sPreferenceOwnTime));
                 hPreferences.GetString("server_time", g_sPreferenceServerTime, sizeof(g_sPreferenceServerTime));
             }
         }
@@ -147,20 +147,10 @@ public void OnMapEnd()
 
 public void OnPluginEnd() 
 {
-    // Сохранение в преференс
+    // Сохранение в преференс, если плагин был отключен 
     if (gc_bOwnTime.BoolValue)
     {
-        KeyValues hPreferences = new KeyValues("Preferences");
-		hPreferences.Rewind(); // Preferences
-
-        if(hPreferences.ImportFromFile(g_sPathPreferencesKeyValues))
-        {
-            char buffer[8];
-            GetServerTimeString(buffer, sizeof(buffer));
-
-            hPreferences.SetString("current_time", buffer);
-            hPreferences.SetString("server_time", buffer);
-        }
+        UpdatePreferences();
     }
 }
 
@@ -176,6 +166,13 @@ public void OnGameFrame()
 //******************************************************//
 void Event_OnRoundStart(Event event, const char[] name, bool dontBroadcast) 
 {	
+    // Сохранение в преференс
+    // TODO: Удостоверится в том, что это оптимально и имеет смысл быть 
+    if (gc_bOwnTime.BoolValue)
+    {
+        UpdatePreferences();
+    }
+
     if(g_bCreatedFog) // если сущность была предусмотрена картой 
 	{
 		SettingsFog();
@@ -395,19 +392,35 @@ public float GetFogMaxDestiny()
 }
 
 /**
-*   //TODO: Дописать функцию и придумать методы вычитания и сложения времени.
-*   Получает собственное серверное время формата HH:MM и сохраняет в буффере.
-*   
+*   Получает собственное серверное время формата HH:MM.
+*
 *   @param buffer   - буффер для хранения времени.
 *   @param size     - размер буффера.
 *
 *   @return         - ничего не возвращает.
 */
-void GetOwnServerTimeString(char[] buffer, const int size) 
+void GetOwnServerTime(char[] buffer, const int size) 
 {
-    // Конвертируем наше время в Int
-    int ownTime = TimeToInt(g_sPreferenceTime, sizeof(g_sPreferenceTime));
-    int serverTime = GetServerTimeInt();
+    int server_time = GetServerTimeInt();
+
+    // Буффер предназначен для копирования времени из KeyValues файла и сопоставлением с текущим временем сервера, чтобы найти разницу во времени
+    int server_time_buffer = TimeToInt(g_sPreferenceServerTime, sizeof(g_sPreferenceServerTime));
+
+    // Храним представление двух временных точек в формате времени
+    char buffer_1[8], buffer_2[8], temp[8];
+
+    // Переводим две временные точки в формат hh:mm
+    IntToTime(server_time, buffer_1, sizeof(buffer_1));
+    IntToTime(server_time_buffer, buffer_2, sizeof(buffer_2));
+
+    // Мы имеем: own_time - последнее сохраненное собственное время, server_time - текущее серверное время, server_time_buffer - последнее сохраненное серверное время
+    // Для определения изменения собственного времени, нужно найти разницу между двумя временными точками server_time и server_time_buffer
+    // temp - содержит разницу между двумя временными точками delta(t)
+    IntToTime(TimeSub(buffer_1, buffer_2), temp, sizeof(temp));
+
+    // Теперь buffer_1 используем для собственного сохраненного времени сервера, а buffer_2 для хранения нового актуального собственного времени сервера
+    GetPreferencesValue("own_time", buffer_1, sizeof(buffer_1));
+    IntToTime(TimeAdd(buffer_1, temp), buffer_2, sizeof(buffer_2)); 
 }
 
 /**
@@ -505,6 +518,45 @@ int Subtraction(char[] time_1, char[] time_2)
 }
 
 /**
+*   Достает значение из поля Preferences и сохраняет его в буффер.
+*
+*   @param field        - наименование поля.
+*   @param buffer       - буффер для хранения значения.
+*   @param size         - размер буффера.
+*/
+void GetPreferencesValue(const char[] field, char[] buffer, const int size)
+{
+    KeyValues hPreferences = new KeyValues("Preferences");
+	hPreferences.Rewind(); 
+	        
+    if (hPreferences.ImportFromFile(g_sPathPreferencesKeyValues))
+    {
+        hPreferences.GetString(field, buffer, size);
+    }
+
+    delete hPreferences;
+}
+
+/**
+*   Обновляет значение поля Preferences.
+*
+*   @param field        - наименование поля.
+*   @param value        - новое значение для поля.
+*/
+void SetPreferencesValue(const char[] field, char[] value)
+{
+    KeyValues hPreferences = new KeyValues("Preferences");
+	hPreferences.Rewind(); 
+	        
+    if (hPreferences.ImportFromFile(g_sPathPreferencesKeyValues))
+    {
+        hPreferences.SetString(field, value);
+    }
+
+    delete hPreferences;
+}
+
+/**
 *   Складывает из одной временной точки - другую.
 *
 *   @param time_1   - первая временная точка.
@@ -532,7 +584,7 @@ int Addition(char[] time_1, char[] time_2)
 
     buffer[0] = IntToChar(CharToInt(time_1[0]) + CharToInt(time_2[0]));
 
-    if (StringToInt(buffer) >= 2400)
+    if (StringToInt(buffer) >= MIDNIGHT)
     {
         IntToTime(Subtraction(buffer, "2400"), buffer, sizeof(buffer));
         ReplaceString(buffer, 8, ":", "");
@@ -650,4 +702,29 @@ int CharToInt(char symble)
     }
 
     return -1;
+}
+
+/**
+*   Обновляет текущие настройки сервера в файл Preferences до актуальных.
+*
+*   @return     - ничего не возвращает. 
+*/
+void UpdatePreferences()
+{
+    KeyValues hPreferences = new KeyValues("Preferences");
+	hPreferences.Rewind(); // Preferences
+	        
+    if (hPreferences.ImportFromFile(g_sPathPreferencesKeyValues))
+    {
+        char server_time[8], own_time[8];
+
+        GetServerTimeString(server_time, sizeof(server_time));
+        GetOwnServerTime(own_time, sizeof(own_time));
+
+        // Сохраняем новые значения серверного времени и собственного
+        hPreferences.SetString("own_time", own_time);
+        hPreferences.SetString("server_time", server_time);
+    }
+
+    delete hPreferences;
 }
